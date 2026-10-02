@@ -515,3 +515,458 @@ et volila donc notre sys de routage dynamique marhc ebien/
 donc  engenrnal on va utilsier routage dynamique pour ceux qui sont enregsitere dans discory
 et statueu pur cuex qui  sont nrgsitre dna siscovery
 apr epxl appeler servcie de open ai comme il est pas enregistrer donc on va nmetre le statique ici
+
+--------------------------------------
+
+on passe au billign servcie pour epxlorer commen faire communiacation entre les microsrcvice pusi il va nous rester config pusi on va faire telrnace en panne pusi securise via keycloak pusi docker etc
+on a essaye de creer plusiues microservcies pusi cusotmr  invnetory gateway discovery
+cette parie consie acree r bilibg servcie qui gere les factuere s e a relation avec customer et aussi inventory
+c ca qu nous allons voir comemnt faire interaction entre ces micriservice vai framework open feign
+ et on va finir avec  comemnt creer servcie de config centralsie  qui est 6 eme partie 
+celle ci shema de ce uqon est entain et on veut faire 
+![img_29.png](images/img_29.png)
+pour fiare la com ent ces 3 servcies il va nous flaor de creer un com rest et va nous flaloir un franwork qui creer client rest et qui est  envpoe des req http entre microservice
+et celui la c rest tmeplate pour envoyer req http au servcie mais c programatique
+puis yavait rst client  pusi web client ts ces 3 sont progrmatqiue  pusi il est ms ancien nosu
+mais mainne ya la 4 eme sol qui est open faeigh  qui est declaratvi on cree que interface pour acceder au clint et au prod pour comnnecter entre eux de facon simple
+
+
+on ajoute module billing-servcie avec meme dependencies que incvnetory et cotomer mais avec openFeign pour communication ntre servcie s
+
+![img_30.png](images/img_30.png)
+
+on cree entieties: Bill,  produc Item
+package net.tayebi.billingservice.entities;
+
+
+import jakarta.persistence.*;
+import lombok.*;
+
+@Entity
+@NoArgsConstructor
+@AllArgsConstructor
+@Getter
+@Setter
+@Builder
+public class ProductItem {
+@Id @GeneratedValue
+private Long id;
+private long productId;
+private int quantity;
+private double price;
+@ManyToOne
+private Bill bill;
+
+}
+
+package net.tayebi.billingservice.entities;
+
+
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+@Entity
+@NoArgsConstructor @AllArgsConstructor @Getter @Setter @Builder
+public class Bill {
+@Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private Date billingDate;
+private long customerId;
+@OneToMany(mappedBy = "bill")
+private List<ProductItem> productItems = new ArrayList<>();
+
+} j declare cusmtomer en model pas entite car c deja dans un autre servcie
+package net.tayebi.billingservice.model;
+
+
+import lombok.*;
+
+@NoArgsConstructor
+@AllArgsConstructor
+@Getter
+@Setter
+@Builder
+public class Customer {
+private String id;
+private String name;
+private String email;
+}
+ car c gere par customer service
+dans bill on ajoute ca :
+@Transient private Customer customer;
+come il n pas entite on met ransient cad je vais el garder and ma classe mais il ne pas reprnesnet dna sma bd tu ignire 
+
+ on cree prodycut en odl aussi 
+on lajoute aussi dan prodcut item
+ package net.tayebi.billingservice.entities;
+
+
+import jakarta.persistence.*;
+import lombok.*;
+import net.tayebi.billingservice.model.Product;
+
+@Entity
+@NoArgsConstructor
+@AllArgsConstructor
+@Getter
+@Setter
+@Builder
+public class ProductItem {
+@Id @GeneratedValue
+private Long id;
+private long productId;
+private int quantity;
+private double price;
+@ManyToOne
+private Bill bill;
+@Transient
+private Product product;
+
+}
+product id c cle c nceaire mais pour jpa l tnaisn c comm eil nexiste pas 
+si je veux donne dans ma bd je communique sql si dautr servcie on utisie rest ou bein open feign
+
+si on veux dimuner latnece on peut utlsie event sourcing et qs en evnet src ing on peut utlsier kafka
+ on cree ns repositorries
+
+
+package net.tayebi.billingservice.repositories;
+
+import net.tayebi.billingservice.entities.ProductItem;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface ProductItemRepository extends JpaRepository<ProductItem, Long> {
+}
+
+package net.tayebi.billingservice.repositories;
+
+import net.tayebi.billingservice.entities.Bill;
+import net.tayebi.billingservice.entities.ProductItem;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface BillRepository extends JpaRepository<Bill, Long> {
+}
+on ajoute ca dnas  poduct item repo
+List<ProductItem> findByBillId(Long billId);
+si jai besin dinfos sur bill ou product item je peux utulsie reposi jap
+si jai besoin de sinfos sur cutomer la on doit utlsier openfeih on cre repo feign avec interfac custome rrst client cad intrface qui permet de communique r avec cutomer service
+package net.tayebi.billingservice.feign;
+
+import net.tayebi.billingservice.model.Customer;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+
+@FeignClient("customer-service")
+public interface CustomerServiceRestClient {
+//    on envoie au servcice customer-service"  le id  lui retrn customer
+@GetMapping("/customers/{id}")
+Customer findCustomerById(@PathVariable  Long id);
+}
+
+ open feign ici envoie reqa vers discovery discory la retrn ladress ip pusi la req senvoie verrs cet adresse  puis le res reccuper et se stocke dans customer
+ on crre un autre pour product
+ package net.tayebi.billingservice.feign;
+
+import net.tayebi.billingservice.model.Customer;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+
+@FeignClient("product-service")
+public interface ProductServiceRestClient {
+//    on envoie au servcice customer-service"  le id  lui retrn customer
+@GetMapping("/products/{id}")
+Customer findProductById(@PathVariable  Long id);
+}
+oepn feign c interface dna slaquel on declare des emth
+dans config de billing
+spring.application.name=billing-service
+server.port=8083
+spring.datasource.url=jdbc:h2:mem:billing-db
+spring.h2.console.enabled=true
+spring.cloud.config.enabled=false
+spring.cloud.discovery.enabled=true
+
+on fai bean
+package net.tayebi.billingservice;
+
+import net.tayebi.billingservice.entities.Bill;
+import net.tayebi.billingservice.entities.ProductItem;
+import net.tayebi.billingservice.repositories.BillRepository;
+import net.tayebi.billingservice.repositories.ProductItemRepository;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+
+import java.util.Date;
+import java.util.List;
+import java.util.Random;
+
+@SpringBootApplication
+public class BillingServiceApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(BillingServiceApplication.class, args);
+    }
+    @Bean
+    CommandLineRunner start(BillRepository billRepository, ProductItemRepository productItemRepository) {
+        return args -> {
+            List<Long> customersIds = List.of(1L, 2L, 3L);
+            List<Long> productIds = List.of(1L, 2L, 3L);
+            customersIds.forEach(clientId->{
+                Bill bill = new Bill();
+                bill.setBillingDate(new Date());
+                bill.setCustomerId(clientId);
+                billRepository.save(bill);
+                productIds. forEach(productId->{
+                    ProductItem productItem = new ProductItem();
+                    productItem.setPrice(1000*Math.random()*600);
+                    productItem.setQuantity(1+new Random().nextInt(20));
+                    productItem.setProductId(productId);
+                    productItem.setBill(bill);
+                    productItemRepository.save(productItem);
+        });
+            });
+
+            };
+    }
+
+}
+on exec notre servcie donc
+ voila tba bill http://localhost:8083/h2-console/login.do?jsessionid=f65c669ebe849ecff525575bf8adc0e6
+![img_31.png](images/img_31.png)
+product itm table:
+![img_32.png](images/img_32.png)
+on cree nos web services via reposRestresoource dna snos repos:
+@RepositoryRestResource
+
+on cherhce et test note pai
+http://localhost:8083/bills
+![img_33.png](images/img_33.png)
+http://localhost:8083/productItems
+![img_34.png](images/img_34.png)
+on cre note packge web aevc controllers rest 
+
+
+voila notre contorller on test apres ;
+package net.tayebi.billingservice.web;
+
+import net.tayebi.billingservice.entities.Bill;
+import net.tayebi.billingservice.feign.CustomerServiceRestClient;
+import net.tayebi.billingservice.feign.InventoryServiceRestClient;
+import net.tayebi.billingservice.model.Customer;
+import net.tayebi.billingservice.repositories.BillRepository;
+import net.tayebi.billingservice.repositories.ProductItemRepository;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+
+public class BillRestController {
+private BillRepository billRepository;
+private ProductItemRepository productItemRepository;
+private CustomerServiceRestClient customerServiceRestClient;
+private InventoryServiceRestClient inventoryServiceRestClient;
+@GetMapping("/bills/{id}")
+public Bill getBillById(@PathVariable Long id){
+Bill bill = billRepository.findById(id).get();
+Customer customer =
+customerServiceRestClient.findCustomerById(bill.getCustomerId());
+bill.setCustomer(customer);
+return bill;
+}
+
+}
+on fait ca en main
+@EnableFeignClients
+ pour eviter err de non mplemented interfaces feign client
+package net.tayebi.billingservice.web;
+
+import lombok.AllArgsConstructor;
+import net.tayebi.billingservice.entities.Bill;
+import net.tayebi.billingservice.feign.CustomerServiceRestClient;
+import net.tayebi.billingservice.feign.InventoryServiceRestClient;
+import net.tayebi.billingservice.model.Customer;
+import net.tayebi.billingservice.repositories.BillRepository;
+import net.tayebi.billingservice.repositories.ProductItemRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+
+@RequestMapping("/api")
+//@AllArgsConstructor
+public class BillRestController {
+@Autowired
+private BillRepository billRepository;
+@Autowired
+
+    private ProductItemRepository productItemRepository;
+    @Autowired
+
+    private CustomerServiceRestClient customerServiceRestClient;
+    @Autowired
+
+    private InventoryServiceRestClient inventoryServiceRestClient;
+    @GetMapping("/bills/{id}")
+    public Bill getBillById(@PathVariable Long id){
+        Bill bill = billRepository.findById(id).get();
+        Customer customer =
+                customerServiceRestClient.findCustomerById(bill.getCustomerId());
+                bill.setCustomer(customer);
+        return bill;
+}
+
+}
+voila st de
+http://localhost:8083/api/bills/1
+ca marhce 
+![img_35.png](images/img_35.png) sauf que ca ente dna sbcl infini
+pour rsoudre prob on va lui dire de ingnere les infos sur facure via  dans produtct Item
+@JsonProperty(access = JsonProperty.Access. WRITE_ONLY) cad lignorer en lecture laisse que en criture
+on resteste don ya pae de bcl infini
+donc voial prob infini depasse 
+et ca marhce  http://localhost:8083/api/bills
+![img_36.png](images/img_36.png)
+
+on a joute ca
+package net.tayebi.billingservice.web;
+
+import lombok.AllArgsConstructor;
+import net.tayebi.billingservice.entities.Bill;
+import net.tayebi.billingservice.feign.CustomerServiceRestClient;
+import net.tayebi.billingservice.feign.InventoryServiceRestClient;
+import net.tayebi.billingservice.model.Customer;
+import net.tayebi.billingservice.repositories.BillRepository;
+import net.tayebi.billingservice.repositories.ProductItemRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+@RestController
+
+@RequestMapping("/api")
+//@AllArgsConstructor
+public class BillRestController {
+@Autowired
+private BillRepository billRepository;
+@Autowired
+
+    private ProductItemRepository productItemRepository;
+    @Autowired
+
+    private CustomerServiceRestClient customerServiceRestClient;
+    @Autowired
+
+    private InventoryServiceRestClient inventoryServiceRestClient;
+    @GetMapping("/bills")
+    public List<Bill> getBills(){
+
+        return billRepository.findAll();
+    }
+    @GetMapping("/bills/{id}")
+    public Bill getBillById(@PathVariable Long id){
+        Bill bill = billRepository.findById(id).get();
+        Customer customer =
+                customerServiceRestClient.findCustomerById(bill.getCustomerId());
+                bill.setCustomer(customer);
+
+        bill.getProductItems().forEach(pi -> {
+         pi.setProduct(
+                    inventoryServiceRestClient.findProductById(pi.getProductId()));
+        });
+        return bill;
+}
+
+
+}
+ dpnc maintne on peut voir facture avec detial de cs donnes comme id  cad facture complete avec tt 
+tq des dones provient de difrent
+base
+http://localhost:8083/api/bills/1
+![img_37.png](images/img_37.png)
+je tets si ma gateway marhc epour billing aussi
+http://localhost:8888/BILLING-SERVICE/api/bills/1
+![img_38.png](images/img_38.png) est don  marche
+
+
+on passe a comment ajouter resilince for j on essaye darrter expres un srvcie 
+par exple customer service
+donc ca va pas marhce
+http://localhost:8888/BILLING-SERVICE/api/bills/1
+![img_39.png](images/img_39.png) acr customer servcie tmboe en panne 
+donc on doit gere rla tolerance en panne via depnedency  resilence 4 j dans biling service quelle permet tolerance au panne 
+impelemtne pattern circuit breaker
+donc on va a customer servcie eon fait circuit breake r
+package net.tayebi.billingservice.feign;
+
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import net.tayebi.billingservice.model.Customer;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+
+@FeignClient("customer-service")
+public interface CustomerServiceRestClient {
+//    on envoie au servcice customer-service"  le id  lui retrn customer
+@GetMapping("/customers/{id}")
+@CircuitBreaker(name = "customer-service",fallbackMethod = "getDefaultCustomer")
+Customer findCustomerById(@PathVariable  Long id);
+}
+ cad qund je fait appel a  ou bein qudn billing sevrice appele customer servcie si cleui dernier echoue 
+ne genre pas except mais il va chrhcer dans le cache un default customer
+@CircuitBreaker(name = "customer-service",fallbackMethod = "getDefaultCustomer")
+
+default Customer getDefaultCustomer(Long customerId,Exception exception){
+Customer customer = new Customer();
+customer.setId(String.valueOf(customerId));
+customer.setName("Default Customer");
+customer.setEmail("default@email.com");
+return customer;
+};
+docn voial default customer car svrice en tmbe 
+![img_40.png](images/img_40.png) 
+ on demarre donc servcie 
+voila ca marhc eun fois dermamrre siinn c defaukt
+![img_41.png](images/img_41.png)
+
+on fait aussi e cricut braekder pour invnetory srvice
+package net.tayebi.billingservice.feign;
+
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import net.tayebi.billingservice.model.Customer;
+import net.tayebi.billingservice.model.Product;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+
+@FeignClient("inventory-service")
+public interface InventoryServiceRestClient {
+//    on envoie au servcice customer-service"  le id  lui retrn customer
+@GetMapping("/products/{id}")
+@CircuitBreaker(name = "inventory-service",fallbackMethod = "getDefaultProduct")
+
+    Product findProductById(@PathVariable  Long id);
+    default Product getDefaultProduct(Long id,Exception exception){
+        Product product=new Product();
+        product.setId(id);
+        product.setName("default product");
+        product.setPrice(-1);
+        product.setQuantity(-1);
+        return product;
+    };
+}
+onm arreste invntory donc 
+et voila default product 
+![img_42.png](images/img_42.png)
+docn si un servcie es ten panne on passe a cirdcuit breaker
