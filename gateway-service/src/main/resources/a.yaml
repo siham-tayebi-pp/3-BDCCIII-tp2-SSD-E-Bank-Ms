@@ -1,0 +1,16 @@
+spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: r1
+#              uri: http://localhost:8081
+              uri: lb://CUSTOMER-SERVICE
+              predicates:
+                - Path= /customers/**
+            - id: r2
+              uri: lb://INVENTORY-SERVICE
+#              uri: http://localhost:8082
+              predicates:
+                - Path= /products/**
