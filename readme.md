@@ -970,3 +970,272 @@ onm arreste invntory donc
 et voila default product 
 ![img_42.png](images/img_42.png)
 docn si un servcie es ten panne on passe a cirdcuit breaker
+
+--------
+partie 3 ou 6:
+
+Spring Cloud Config
+cad on va voire comemnt cenrlaiser la config dune archi microservcice
+dans notre acs nosu avons creer fich de config pour chaue microservice mas dans le pratique c pas comme ca que ca s passe
+et si on veut mdoifier ou doit mdiifer dans tt les fich et redemarreeer les sevrices c pour scel on va cereer un seul config servcie pour geger config cad on va crer un  dossir aveec lensmble des config et on va les versionner avec git repo ou dossier 
+on va creer app/properties ou on v adeclarrr ts ce qui est n commun
+et dans yaml chaue servcie t ses proprerties  cad microservcie un fois il demarre il envoie req au config microsevice pour demander sa config
+et cahque microservcie avec son nom pour y mettre dles configs qui sont pas separer 
+mais si ceriands config modif on peu faire config a chaud cad qu els attbtiut change pas tt 
+on crer don c config sevice
+on aura bsoin ausis  evault pour stokcer eles pawwsord et secret 
+voial config-service cree 
+![img_43.png](images/img_43.png)
+et on cree config repo qui est repo github
+et dna s config servcie je dois lactiver  vai enabelconfigsrveer
+@EnableConfigServer
+
+pusi n config
+spring.application.name=config-service
+server.port=9999
+spring.cloud.config.server.git.uri=file://C:/Users/PC/IdeaProjects/ebank-ms/config-repo
+on test donc via
+http://localhost:9999/application/default
+ca marche 
+![img_44.png](images/img_44.png)
+pour config customer
+http://localhost:9999/customer-service/default
+![img_45.png](images/img_45.png)
+a pour prod http://localhost:9999/customer-service/prod
+ ![img_46.png](images/img_46.png)
+la on essaye d e odif config pour customer et ca charge bien
+global.params.p1=456
+global.params.p2=234global.params.p1=456
+global.params.p2=234
+au
+global.params.p1=999
+global.params.p2=888
+et on voit les nv modif charrge dans http://localhost:9999/customer-service/prod
+![img_47.png](images/img_47.png)
+on va voir comem utilsier ca en nibveau de custome sevcie
+on active ca spring.cloud.discovery.enabled=true
+pour ....
+spring.config.import=optional:configserver:http://localhost:9999
+on cree ontroller poru tester 
+
+package net.tayebi.customerservice.config;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+
+@RestController
+public class ConfigTestRestController
+{
+@Value("${global.params.p1}")
+private String p1;
+@Value("${global.params.p2}")
+private String p2;
+
+    public Map<String,String> configTest(){
+
+        return Map.of("p1",p1,"p2",p2);
+    }
+}
+
+on demmare customer cervice
+package net.tayebi.customerservice.config;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+
+@RestController
+public class ConfigTestRestController
+{
+@Value("${global.params.p1}")
+private String p1;
+@Value("${global.params.p2}")
+private String p2;
+@GetMapping("/testConfig1")
+public Map<String,String> configTest(){
+
+        return Map.of("p1",p1,"p2",p2);
+    }
+}
+
+on test   http://localhost:8081/testConfig1
+{
+"p2": "888",
+"p1": "999"
+}
+ ca retrn ![img_48.png](images/img_48.png)
+on passe a crer :
+
+package net.tayebi.customerservice.config;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+
+@ConfigurationProperties(prefix = "customer.params")
+public record CustomerConfigParams(int x, int y) {
+
+    }
+ e dna smin de ce service
+ @EnableConfigurationProperties(CustomerConfigParams.class)
+ pour verif que config e ien charge ron ajoute ca
+ package net.tayebi.customerservice.config;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+
+@RestController
+public class ConfigTestRestController
+{
+@Value("${global.params.p1}")
+private String p1;
+@Value("${global.params.p2}")
+private String p2;
+@Autowired
+private CustomerConfigParams customerConfigParams;
+@GetMapping("/testConfig1")
+public Map<String,String> configTest(){
+
+        return Map.of("p1",p1,"p2",p2);
+    }
+    @GetMapping("/testConfig2")
+    public CustomerConfigParams configTest2(){
+        return customerConfigParams;
+    }
+
+}
+on rexec
+http://localhost:8081/testConfig2 donc cbon :
+
+
+{
+"x": 11,
+"y": 22
+}
+![img_49.png](images/img_49.png)
+derneir pt par epxle si  je chnage config
+global.params.p1=7777
+global.params.p2=9999 par exple 
+le micro srvcie ne sias rien pour quichagre nv modfi il faus faire nv commit car refrehs ne va pas amrche  puis envoyer
+req vers actuator ou sevrice pour lui dire que la req a chage
+on cherhc eun outil httpclient avec lequel on pu envoye u npst vers svcie 8081 
+on active acuaor dan customer servcie
+management.endpoints.web.exposure.include=health, refresh
+ je fiat commit et voila verosi n 2 
+![img_50.png](images/img_50.png)
+on rechang v3 et on fait commit
+global.params.p1=0102
+global.params.p2=0340
+
+on redemarre pas on envoie rq http refreh
+
+commit ![img_51.png](images/img_51.png)
+pusi POST http://localhost:8081/actuator/refresh
+Accept: application/json puis 
+dan s configtest... on ajoute refrsh scope
+package net.tayebi.customerservice.config;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+
+@RestController
+@RefreshScope
+public class ConfigTestRestController
+{
+@Value("${global.params.p1}")
+private String p1;
+@Value("${global.params.p2}")
+private String p2;
+@Autowired
+private CustomerConfigParams customerConfigParams;
+@GetMapping("/testConfig1")
+public Map<String,String> configTest(){
+
+        return Map.of("p1",p1,"p2",p2);
+    }
+    @GetMapping("/testConfig2")
+    public CustomerConfigParams configTest2(){
+        return customerConfigParams;
+    }
+
+}
+pour indiquer a spring que ce controller doit tre instlancie a chaue on rafraichit config
+la don c aon a reusit a cnfig sevice a chaued sans rdmarrre
+global.params.p1=8098
+global.params.p2=9009
+![img_53.png](images/img_53.png)
+![img_52.png](images/img_52.png)
+ce qui rest afaire c prendre config  et la mette  cutomer-servcie .properties
+~\IdeaProjects\ebank-ms\config-repo git:[master]
+git add .
+~\IdeaProjects\ebank-ms\config-repo git:[master]
+git commit -m "fourth-commit"
+[master 76979ba] fourth-commit
+2 files changed, 15 insertions(+), 3 deletions(-)
+pusi exec req
+POST http://localhost:8081/actuator/refresh
+Accept: application/json
+
+<> 2026-10-03T013305.200.json
+<> 2026-10-03T013000.500.json
+<> 2026-10-03T012559.200.json
+<> 2026-10-03T012410.500.json
+
+###
+
+et c bon POST http://localhost:8081/actuator/refresh
+
+HTTP/1.1 200
+Content-Type: application/json
+Content-Length: 25
+Date: Sat, 03 Oct 2026 00:33:05 GMT
+
+[
+"config.client.version"
+]
+Response file saved.
+> 2026-10-03T013305.200.json
+
+Response code: 200; Time: 447ms (447 ms); Content length: 25 bytes (25 B)
+
+s on trnansfetles config cdes ervcies ver srepo et on emt n leur palce
+spring.config.impprt=optional: configserver:http://localhost:9999
+
+
+et voil http://localhost:8761/
+tt nos services
+![img_54.png](images/img_54.png) on tset aussi
+http://localhost:8888/BILLING-SERVICE/api/bills/1
+![img_55.png](images/img_55.png)
+
+http://localhost:8888/CUSTOMER-SERVICE/api/customers/1
+![img_56.png](images/img_56.png)
+http://localhost:8888/INVENTORY-SERVICE/products/1
+
+![img_57.png](images/img_57.png)
+mainrntne au liu de  config sevice on meodiefie
+spring.cloud.config.server.git.uri=file://C:/Users/PC/IdeaProjects/ebank-ms/config-repo
+avec 
+
+spring.cloud.config.server.git.uri=https://github.com/siham-tayebi-pp/3-BDCCIII-tp2-SSD-E-Bank-Ms
+on redemamre et donc ca mrch trs bien
+![img_58.png](images/img_58.png)
+on apsee ammett config enrnla dans meme config puur tt microsevricen
+
+
